@@ -7,14 +7,25 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 const PORT = process.env.PORT || 3000;
 
-// Initialize Firebase Admin SDK using serviceAccountKey.json
+// Initialize Firebase Admin SDK (env var for Vercel, file for local dev)
 let db = null;
 let firebaseConnected = false;
 
 try {
-  const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
-  if (fs.existsSync(serviceAccountPath)) {
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+  let serviceAccount = null;
+
+  // Try environment variable first (Vercel deployment)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else {
+    // Fall back to local file
+    const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
+    if (fs.existsSync(serviceAccountPath)) {
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
+    }
+  }
+
+  if (serviceAccount) {
     initializeApp({
       credential: cert(serviceAccount)
     });
@@ -22,7 +33,7 @@ try {
     firebaseConnected = true;
     console.log(`🔥 Firebase Admin SDK initialized for project: ${serviceAccount.project_id}`);
   } else {
-    console.warn("⚠️ serviceAccountKey.json not found. Running in mock mode.");
+    console.warn("⚠️ No Firebase credentials found. Running in mock mode.");
   }
 } catch (error) {
   console.error("❌ Firebase Initialization Error:", error);
@@ -31,7 +42,7 @@ try {
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Initial Default Data for Firestore Seeding
 const SEED_DATA = {
@@ -562,10 +573,15 @@ app.post('/api/marketplace', async (req, res) => {
 
 // Serve frontend SPA fallback
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`🚀 CampusMate server running with Firestore API on http://localhost:${PORT}`);
-});
+// Export for Vercel serverless
+module.exports = app;
+
+// Start Server (only when running locally, not on Vercel)
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 CampusMate server running with Firestore API on http://localhost:${PORT}`);
+  });
+}
